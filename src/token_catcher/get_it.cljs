@@ -73,4 +73,3 @@
           (p/then #(prn "All done!"))
           (p/finally #(.close browser))))))
 
-(-main)
