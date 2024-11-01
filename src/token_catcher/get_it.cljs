@@ -2,59 +2,17 @@
   (:require
    ["playwright$default" :as pw]
    [cljs-bean.core :refer [bean ->clj ->js]]
+   [clojure.string :as str]
    [goog.string :refer [format]]
    [promesa.core :as p]
-   [token-catcher.auth :refer [creds]]))
-
+   [token-catcher.auth :as auth]))
 
 (def browser-type pw/chromium)
-
-(def browser (.launch browser-type #js {:headless false}))
-
-(-> browser
-    (.then
-     #(.close %)
-     ))
-
-#_(p/let [browser (.launch browser-type #js {:headless false})]
-  )
-
-
-#_(-> (p/let [browser browser
-            context (.newContext browser)
-            page (.newPage context)
-            _ (.goto page "https://clojurians.slack.com/customize")
-            _ (-> page
-                  (.locator "a[data-qa=sign_in_password_link]")
-                  (.click))
-            _ (-> page (.locator "input#email")
-                  (.fill "agzam.ibragimov@gmail.com"))
-            - (-> page (.locator "input#password")
-                  (.fill "V73MZ8eO069p"))
-            _ (-> page (.locator "button#signin_btn")
-                        (.click))]))
-
-#_(p/let [browser browser
-        context (.newContext browser)
-        page (.newPage context)
-        _ (.goto page "https://qlikdev.slack.com/customize")
-        _ (p/do
-            (-> page
-                (.locator "a#index_saml_sign_in_with_saml")
-                (.click))
-            (.waitForSelector
-             page
-             "div#list_emoji_section"
-             #js {:waitUntil "domcontentloaded"}))
-        token (.evaluate page "TS.boot_data.api_token")
-        cookies (-> page (.context) (.cookies))]
-  (cljs.pprint/pprint
-   (->clj cookies))
-  (prn token))
 
 (defn do-login [page email pass]
   (p/create
    (fn [resolve reject]
+     (prn "Login page...")
      (let [logp (if (= :saml email)
                   (-> page
                       (.locator "a#index_saml_sign_in_with_saml")
@@ -68,50 +26,51 @@
        (-> logp
            (p/then
             (fn []
-              (p/-> (.waitForLoadState page "load")
-                    #(.waitForSelector page "div#list_emoji_section" #js {:state "attached"})
-                    resolve)))
-           (p/catch reject))))))
+              (prn "Sign-in button clicked.")
+              (-> (.waitForLoadState page "domcontentloaded")
+                  (p/then #(.waitForSelector page "div#list_emoji_section" #js {:state "visible"}))
+                  (p/then (fn []
+                            (prn "Customization page loaded")
+                            (resolve))))))
+           (p/catch #(prn "Error in do-login" %)))))))
 
 (defn gather-token&cookie [page]
-  (p/create
-   (fn [resolve reject]
-     (p/let [token (.evaluate page "TS.boot_data.api_token")
-             cookies (-> page (.context) (.cookies))]
-       (-> cookies
-           (p/then (fn [cs]
-                     (resolve {:token token
-                               :cookies (->> cs ->clj
-                                             (filter #(->> % :name (contains? #{"d" "d-s" "lc"})))
-                                             (map #(select-keys % [:name :value]))
-                                             (map (juxt :name :value))
-                                             (into {}))})))
-           (p/catch reject))))))
+  (p/let [token (.evaluate page "TS.boot_data.api_token")
+          cookies (-> page (.context) (.cookies))]
+    {:token token
+     :cookies (->> cookies
+                   ->clj
+                   (filter #(->> % :name (contains? #{"d" "d-s" "lc"})))
+                   (map #(select-keys % [:name :value]))
+                   (map (juxt (comp keyword :name) :value))
+                   (into {}))}))
 
-(p/let [browser (.launch browser-type #js {:headless false})
-        orgs (creds)]
-  (->
-   (p/all
-    (for [[org [email pass]] (take 1 orgs) ; TODO: remove take 1 later
-          ]
-      (p/create
-       (fn [resolve reject]
-         (p/let [ctx (.newContext browser)
-                 page (.newPage ctx)
-                 _ (.goto page (format "https://%s/customize" org))
-                  token&cookie (-> (do-login page email pass)
-                                   (p/then #(gather-token&cookie page))
-                                   (p/catch prn))]
-           (-> token&cookie
-               (p/then
-                (fn [tc]
-                  (cljs.pprint/pprint tc)
-                  (resolve)))
-               (p/catch reject)))))))
-   (p/then #(.close browser))
-   (p/catch prn)))
+(defn token&cookie->netrc [org tc-map]
+  (let [{:keys [token]
+         {:keys [d lc d-s]} :cookies} tc-map]
+    (->> [(format "machine %s login token password %s"
+                  org token)
+          (format "machine %s login cookie password %s; d-s=%s; lc=%s"
+                  org d d-s lc)]
+        (str/join "\n"))))
 
+(defn -main []
+  (p/let [browser (.launch browser-type #js {:headless true})
+          orgs (auth/read-passwords-file)]
+    (let [res (for [[org [email pass]] orgs]
+                (p/let [ctx (.newContext browser)
+                        page (.newPage ctx)
+                        _ (.goto page (format "https://%s/customize" org))
+                        token&cookie (-> (do-login page email pass)
+                                         (p/then #(gather-token&cookie page))
+                                         (p/catch #(prn "Error in login/gather:" %)))
+                        _ (->> token&cookie
+                               (token&cookie->netrc org)
+                               (auth/save-token-data nil))]
+                  (prn "all operations done for:" org)))]
+      (-> res
+          p/all
+          (p/then #(prn "All done!"))
+          (p/finally #(.close browser))))))
 
-
-#_(cljs.pprint/pprint
-              (->> cookies ->clj (some #(-> % :name (= "d"))) first :value))
+(-main)

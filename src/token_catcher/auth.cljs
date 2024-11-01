@@ -10,7 +10,6 @@
 
 (def slack-passwords-file "resources/creds.gpg")
 (def destination-gpg-file "~/.doom.d/.secrets.gpg")
-(def default-recipient-email "agzam.ibragimov@gmail.com")
 
 (defn expand-tilde [path]
   (if (.startsWith path "~")
@@ -23,10 +22,10 @@
    (which/sync "gpg2")
    file))
 
-(defn gpg-encrypt-command [data recipient-email]
-  (format
-   "echo %s | %s --encrypt --recipient %s --armor"
-   data (which/sync "gpg2") recipient-email))
+(defn gpg-encrypt-command [data & {:keys [recipient]}]
+  (let [cmd (cond-> "echo '%s' | %s --encrypt --armor"
+              recipient (str " --recipient %s"))]
+    (format cmd data (which/sync "gpg2") recipient)))
 
 (defn read-encrypted
   "Reads gpg encrypted file content, decrypts into a string."
@@ -49,16 +48,19 @@
 
 (defn encrypt&save
   "Saves `data` into a gpg encrypted `file`."
-  [file recipient-email data]
+  [file data]
   (p/let [exec (.-exec (js/require "child_process"))]
     (p/create
      (fn [resolve reject]
        (exec
-        (gpg-encrypt-command data recipient-email)
+        (gpg-encrypt-command data)
         (fn [err stdout stderr]
           (if (or err (seq stderr))
             (do
-              (println err)
+              (println
+               "Error while encrypting with command: "
+               (gpg-encrypt-command data)
+               err)
               (reject (or err (seq stderr))))
             (do
               (fs/writeFileSync (expand-tilde file) stdout "utf-8")
@@ -89,14 +91,13 @@
   Note that it updates any existing records with the same host data,
   e.g., if you have: 'machine slack:clojurians ...' in `token-data` -
   all the records in the file for the same host will be overwritten."
-  [token-data dest-file]
-  (-> dest-file
-      read-encrypted
-      (p/then
-       (fn [decrypted-content]
-         (->>
-          token-data
-          (merge-netrc-data decrypted-content)
-          (encrypt&save
-           dest-file
-           default-recipient-email))))))
+  [dest-file token-data]
+  (let [destf (or dest-file destination-gpg-file)]
+    (-> destf
+        read-encrypted
+        (p/then
+         (fn [decrypted-content]
+           (->>
+            token-data
+            (merge-netrc-data decrypted-content)
+            (encrypt&save destf)))))))
