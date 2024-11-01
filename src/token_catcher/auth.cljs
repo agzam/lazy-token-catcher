@@ -1,30 +1,102 @@
 (ns token-catcher.auth
   (:require
+   ["fs" :as fs]
+   ["os" :as os]
+   ["which$default" :as which]
    [clojure.edn :as edn]
-   [promesa.core :as p]
-   ["which$default" :as which]))
+   [clojure.string :as str]
+   [goog.string :refer [format]]
+   [promesa.core :as p]))
 
-(def gpg-command
-  (let [gpg2-path (which/sync "gpg2")]
-    (str
-     gpg2-path " -q --for-your-eyes-only --no-tty -d "
-     "resources/creds.gpg")))
+(def slack-passwords-file "resources/creds.gpg")
+(def destination-gpg-file "~/.doom.d/.secrets.gpg")
+(def default-recipient-email "agzam.ibragimov@gmail.com")
 
-(defn creds
-  "Reads credentials file content, decrypts and parses it into a map."
-  []
+(defn expand-tilde [path]
+  (if (.startsWith path "~")
+    (str (os/homedir) (subs path 1))
+    path))
+
+(defn gpg-read-command [file]
+  (format
+   "%s -q --for-your-eyes-only --no-tty -d %s"
+   (which/sync "gpg2")
+   file))
+
+(defn gpg-encrypt-command [data recipient-email]
+  (format
+   "echo %s | %s --encrypt --recipient %s --armor"
+   data (which/sync "gpg2") recipient-email))
+
+(defn read-encrypted
+  "Reads gpg encrypted file content, decrypts into a string."
+  [file]
   (p/let [exec (.-exec (js/require "child_process"))
           content
           (p/create
-           (fn [resolve]
+           (fn [resolve reject]
              (exec
-              gpg-command
+              (gpg-read-command file)
               (fn [err stdout stderr]
                 (if (or err (seq stderr))
                   (do
                     (println err)
-                    (resolve (or err (seq stderr))))
+                    (reject (or err (seq stderr))))
                   (do
-                    (println ".. done")
+                    (println "decrypted " file)
                     (resolve stdout)))))))]
-    (edn/read-string content)))
+    content))
+
+(defn encrypt&save
+  "Saves `data` into a gpg encrypted `file`."
+  [file recipient-email data]
+  (p/let [exec (.-exec (js/require "child_process"))]
+    (p/create
+     (fn [resolve reject]
+       (exec
+        (gpg-encrypt-command data recipient-email)
+        (fn [err stdout stderr]
+          (if (or err (seq stderr))
+            (do
+              (println err)
+              (reject (or err (seq stderr))))
+            (do
+              (fs/writeFileSync (expand-tilde file) stdout "utf-8")
+              (println "encrypted " file)
+              (resolve file)))))))))
+
+(defn read-passwords-file []
+  (-> slack-passwords-file
+      read-encrypted
+      (p/then edn/read-string)))
+
+(defn merge-netrc-data
+  "Merges two netrc texts,
+  replacing any hosts in `a` with corresponding data in `b`"
+  [a b]
+  (let [grp (fn [data]
+              (->> data str/split-lines
+                   (remove str/blank?)
+                   (group-by #(second (re-find #"machine\s+(\S+)" %)))))]
+    (->> (merge (grp a) (grp b))
+         vals
+         (map (partial str/join "\n"))
+         (str/join "\n\n"))))
+
+(defn save-token-data
+  "Saves token data in netrc format into a gpg-encrypted file.
+
+  Note that it updates any existing records with the same host data,
+  e.g., if you have: 'machine slack:clojurians ...' in `token-data` -
+  all the records in the file for the same host will be overwritten."
+  [token-data dest-file]
+  (-> dest-file
+      read-encrypted
+      (p/then
+       (fn [decrypted-content]
+         (->>
+          token-data
+          (merge-netrc-data decrypted-content)
+          (encrypt&save
+           dest-file
+           default-recipient-email))))))
