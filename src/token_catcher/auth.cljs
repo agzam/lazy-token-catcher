@@ -10,7 +10,9 @@
      gpg2-path " -q --for-your-eyes-only --no-tty -d "
      "resources/creds.gpg")))
 
-(defn creds []
+(defn creds
+  "Reads credentials file content, decrypts and parses it into a map."
+  []
   (p/let [exec (.-exec (js/require "child_process"))
           content
           (p/create
