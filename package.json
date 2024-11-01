@@ -1,0 +1,15 @@
+{
+  "name": "lazy-token-catcher",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ag Ibragimov <agzam.ibragimov@gmail.com>",
+  "license": "GPL-3.0-or-later",
+  "description": "Script to grab Slack tokens",
+  "dependencies": {
+    "playwright": "^1.48.2",
+    "which": "^5.0.0"
+  }
+}
