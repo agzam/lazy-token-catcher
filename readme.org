@@ -1,0 +1,32 @@
+#+title: Grab Slack auth token to use somewhere else
+
+This is an automation script for grabbing Slack tokens and session cookies to use with other tools. Mainly for using Slack in Emacs.
+
+** Prerequisites:
+
+- Node.js
+- Configured and functional GPG keychain
+
+** How does it work?
+
+- You create a gpg-encrypted EDN file with credentials to your Slack Orgs that you want to use outside of Slack App. The format should be similar to this:
+
+  #+begin_src clojure
+  {"clojurians.slack.com" ["my-email@gmail.com" "MY-SLACK-PASS"]
+   "my-work.slack.com"    [:saml true]}
+  #+end_src
+
+  Place it in the =./resources/creds.gpg= *It must be encrypted!*
+  You can add as many orgs you want.
+
+- First time, you need to install Chromium Browser, so Playwright can use it for the headless runner:
+
+  #+begin_src bash
+  npx playwright install chromium
+  #+end_src
+
+- Then, when you run the script: ~npm start~, it creates a gpg-encrypted file of netrc format (similar to authinfo.gpg)
+
+** Status
+
+Very experimental. Works on my machine. No promises, no guarantees. Feel free to complain and throw some ideas or angry emojiis.
