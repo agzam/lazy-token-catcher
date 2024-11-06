@@ -27,7 +27,8 @@
            (p/then
             (fn []
               (prn "Sign-in button clicked.")
-              (-> (.waitForLoadState page "domcontentloaded")
+              (-> page (.waitForNavigation)
+                  (p/then #(.waitForLoadState page "domcontentloaded"))
                   (p/then #(.waitForSelector page "div#list_emoji_section" #js {:state "visible"}))
                   (p/then (fn []
                             (prn "Customization page loaded")
@@ -48,10 +49,9 @@
 (defn token&cookie->netrc [org tc-map]
   (let [{:keys [token]
          {:keys [d lc d-s]} :cookies} tc-map]
-    (->> [(format "machine %s login token password %s"
-                  org token)
-          (format "machine %s login cookie password %s; d-s=%s; lc=%s"
-                  org d d-s lc)]
+    (->> [(str "machine " org " login token password " token)
+          (str "machine " org " login cookie password "
+               d ";d-s=" d-s ";lc=" lc)]
         (str/join "\n"))))
 
 (defn -main []
