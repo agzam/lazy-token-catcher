@@ -8,13 +8,13 @@
    [goog.string :refer [format]]
    [promesa.core :as p]))
 
-(def slack-passwords-file "resources/creds.gpg")
-(def destination-gpg-file "~/.doom.d/.secrets.gpg")
-
 (defn expand-tilde [path]
   (if (.startsWith path "~")
     (str (os/homedir) (subs path 1))
     path))
+
+(def slack-passwords-file "resources/creds.gpg")
+(def destination-gpg-file (expand-tilde "~/.doom.d/.secrets.gpg"))
 
 (defn gpg-read-command [file]
   (format
@@ -30,21 +30,22 @@
 (defn read-encrypted
   "Reads gpg encrypted file content, decrypts into a string."
   [file]
-  (p/let [exec (.-exec (js/require "child_process"))
-          content
-          (p/create
-           (fn [resolve reject]
-             (exec
-              (gpg-read-command file)
-              (fn [err stdout stderr]
-                (if (or err (seq stderr))
-                  (do
-                    (println err)
-                    (reject (or err (seq stderr))))
-                  (do
-                    (println "decrypted " file)
-                    (resolve stdout)))))))]
-    content))
+  (when (fs.existsSync file)
+    (p/let [exec (.-exec (js/require "child_process"))
+            content
+            (p/create
+             (fn [resolve reject]
+               (exec
+                (gpg-read-command file)
+                (fn [err stdout stderr]
+                  (if (or err (seq stderr))
+                    (do
+                      (println err)
+                      (reject (or err (seq stderr))))
+                    (do
+                      (println "decrypted " file)
+                      (resolve stdout)))))))]
+      content)))
 
 (defn encrypt&save
   "Saves `data` into a gpg encrypted `file`."

@@ -30,6 +30,7 @@
               (-> page (.waitForNavigation)
                   (p/then #(.waitForLoadState page "domcontentloaded"))
                   (p/then #(.waitForSelector page "div#list_emoji_section" #js {:state "visible"}))
+                  (p/then #(.waitForFunction page "window.TS?.boot_data?.api_token" #js {:timeout 10000}))
                   (p/then (fn []
                             (prn "Customization page loaded")
                             (resolve))))))
@@ -73,3 +74,21 @@
           (p/then #(prn "All done!"))
           (p/finally #(.close browser))))))
 
+
+
+
+(comment
+  (def stuff (p/let [browser (.launch browser-type #js {:headless false})
+                     ctx (.newContext browser)
+                     page (.newPage ctx)
+                     ]
+                 {:browser browser
+                  :ctx ctx
+                  :page page}))
+
+  (def page (-> @stuff :page))
+
+  (.goto page (format "https://%s/customize" "qlikdev.slack.com"))
+
+  (-main)
+  )
