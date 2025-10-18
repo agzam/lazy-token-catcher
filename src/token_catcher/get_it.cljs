@@ -67,64 +67,37 @@
                d ";d-s=" d-s ";lc=" lc)]
         (str/join "\n"))))
 
-(comment
-  (.close @c/browser-obj)
-  (->
-   (p/let [page (get-page)
-           btn (.getByLabel page "Select to get a push notification to the Okta Verify app.")]
-     (.click btn))
-   (.catch prn)
-   (.then prn))
-
-  (.close @c/browser-obj)
-  
-  (->
-   (p/let [page (get-page)]
-     (.evaluate page "TS.boot_data.api_token"))
-   (.then prn)
-   )
-
-  (->
-   (p/let [orgs (auth/read-passwords-file)]
-     orgs
-     )
-   (.then prn)
-   )
-  
-  )
+(defn process-org [page org creds]
+  (p/create
+   (fn [resolve reject]
+     (prn "Processing " org)
+     (p/let [_ (prn "")
+             _ (.goto page (format "https://%s/customize" org))
+             token&cookie (-> (do-login page creds)
+                              (p/then #(gather-token&cookie page))
+                              (p/catch
+                                  (fn [e]
+                                    (prn "Error in login/gather:" e)
+                                    (reject e))))
+             _ (->> token&cookie
+                    (token&cookie->netrc org)
+                    (auth/save-token-data nil))]
+       (prn "all operations done for:" org)
+       (.close page)
+       (resolve org)))))
 
 (defn -main []
   (p/let [browser (get-browser)
-          page (get-page browser) 
-          orgs (auth/read-passwords-file)]
-    (let [res (for [[org {:keys [_email _pass _saml?] :as creds}] orgs]
-                (p/let [_ (.goto page (format "https://%s/customize" org))
-                        token&cookie (-> (do-login page creds)
-                                         (p/then #(gather-token&cookie page))
-                                         (p/catch #(prn "Error in login/gather:" %)))
-                        _ (->> token&cookie
-                               (token&cookie->netrc org)
-                               (auth/save-token-data nil))]
-                  (prn "all operations done for:" org)))]
-      (-> res
-          p/all
-          (p/then #(prn "All done!"))
-          (p/finally #(.close browser))))))
+          orgs (auth/read-passwords-file)
+          results 
+          (->> orgs
+               (map-indexed
+                (fn [idx [org creds]]
+                  (p/let [page (get-page browser idx)]
+                    (process-org page org creds)))))]
+    (-> results
+        p/all
+        (p/then #(prn "All done!"))
+        (p/finally #(.close browser)))))
 
 
-
-(comment
-  (def stuff (p/let [browser (.launch browser-type #js {:headless false})
-                     ctx (.newContext browser)
-                     page (.newPage ctx)
-                     ]
-                 {:browser browser
-                  :ctx ctx
-                  :page page}))
-
-  (def page (-> @stuff :page))
-
-  (.goto page (format "https://%s/customize" "qlikdev.slack.com"))
-
-  (-main)
-  )
