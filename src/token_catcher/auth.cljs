@@ -13,14 +13,17 @@
     (str (os/homedir) (subs path 1))
     path))
 
-(def slack-passwords-file "resources/creds.gpg")
-(def destination-gpg-file (expand-tilde "~/.doom.d/.secrets.gpg"))
+(def config
+  (-> (fs/readFileSync "resources/config.edn" "utf-8")
+      edn/read-string))
+
+(def slack-passwords-file (:slack-passwords-file config))
+(def destination-gpg-file (expand-tilde (:destination-gpg-file config)))
 
 (defn gpg-read-command [file]
   (format
-   "%s -q --for-your-eyes-only --no-tty -d %s"
-   (which/sync "gpg2")
-   file))
+   "%s -q --for-your-eyes-only --no-tty -d %s "
+   (which/sync "gpg2") file))
 
 (defn gpg-encrypt-command [data & {:keys [recipient]}]
   (let [cmd (cond-> "echo '%s' | %s --encrypt --armor"
@@ -50,11 +53,13 @@
 (defn encrypt&save
   "Saves `data` into a gpg encrypted `file`."
   [file data]
-  (p/let [exec (.-exec (js/require "child_process"))]
+  (p/let [exec (.-exec (js/require "child_process"))
+          cmd  (gpg-encrypt-command data :recipient (:gpg-recipient config))]
+    (prn (format "Will now encrypt: %s, running: " destination-gpg-file cmd))
     (p/create
      (fn [resolve reject]
        (exec
-        (gpg-encrypt-command data)
+        cmd 
         (fn [err stdout stderr]
           (if (or err (seq stderr))
             (do
@@ -93,11 +98,15 @@
   e.g., if you have: 'machine slack:clojurians ...' in `token-data` -
   all the records in the file for the same host will be overwritten."
   [dest-file token-data]
+  (prn "Saving token & cookie to the destination file...")
   (let [destf (or dest-file destination-gpg-file)]
     (-> destf
         read-encrypted
         (p/then
          (fn [decrypted-content]
+           (prn "Will try to update the existing keys (if any)...")
+           (prn decrypted-content)
+           (prn token-data)
            (->>
             token-data
             (merge-netrc-data decrypted-content)

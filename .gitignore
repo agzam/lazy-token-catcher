@@ -15,4 +15,4 @@ pom.xml.asc
 /.nrepl-port
 /.prepl-port
 /.cpcache
-resources/
+resources/creds.gpg

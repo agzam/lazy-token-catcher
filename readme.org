@@ -8,25 +8,40 @@ This is an automation script for grabbing Slack tokens and session cookies to us
 - Configured and functional GPG keychain
 
 ** How does it work?
+- Most likely you would be needing two types of tokens to interact with Slack through third-party apps:
+  - One that starts with ~xoxc-~
+  - Another that starts with ~xoxd-~
 
-- You create a gpg-encrypted EDN file with credentials to your Slack Orgs that you want to use outside of Slack App. The format should be similar to this:
+This script will run for listed Slack Orgs and extract the tokens.
+In order to access Slack you will have to provide your credentials for each org, but we can't allow that through unsafe mechanisms, so the credentials *must* be stored in an encrypted file!
 
-  #+begin_src clojure
-  {"clojurians.slack.com" ["my-email@gmail.com" "MY-SLACK-PASS"]
-   "my-work.slack.com"    [:saml true]}
-  #+end_src
+The credentials file content would be like this:
 
-  Place it in the =./resources/creds.gpg= *It must be encrypted!*
-  You can add as many orgs you want.
+#+begin_src clojure
+{"myorg.slack.com"
+ {:email "bob@myorg.com"
+  :pass  "MY-SLACK-PASS"
+  :saml? true}
 
-- First time, you need to install Chromium Browser, so Playwright can use it for the headless runner:
+ "clojurians.slack.com"
+ {:email "bob.not.alice@gmail.com"
+  :pass  "MY-SLACK-PASS2"}}
+#+end_src    
+
+The script runs smoothly for non-SAML Slack accounts, while the flow for SAML-enabled accounts may require some tweaking - depending on the situation. So far, I've tested it with Okta-compatible flows with Okta-verify push. Make sure to watch your mobile device paired for the verify push.
+
+TODO: I should make it so the verification is required only the first time, once.
+
+** Before the first run:
 
   #+begin_src bash
   npx playwright install chromium
   #+end_src
-
-- Then, when you run the script: ~npm start~, it creates a gpg-encrypted file of netrc format (similar to authinfo.gpg)
+  
+- Change resources/config.edn - set the paths, ensure correct email/gpg-key for the ~:gpg-recipient~
+  
+- Run the script: ~npm start~
 
 ** Status
 
-Very experimental. Works on my machine. No promises, no guarantees. Feel free to complain and throw some ideas or angry emojiis.
+Still experimental. Works on my machine. No promises, no guarantees. Feel free to complain and throw some ideas or angry emojis.

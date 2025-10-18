@@ -1,0 +1,3 @@
+{:destination-gpg-file "~/.doom.d/.secrets.gpg"
+ :slack-passwords-file "resources/creds.gpg"
+ :gpg-recipient        "...@gmail.com"}
