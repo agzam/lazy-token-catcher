@@ -6,6 +6,7 @@
    [clojure.edn :as edn]
    [clojure.string :as str]
    [goog.string :refer [format]]
+   [token-catcher.core :refer [read-config]]
    [promesa.core :as p]))
 
 (defn expand-tilde [path]
@@ -13,9 +14,7 @@
     (str (os/homedir) (subs path 1))
     path))
 
-(def config
-  (-> (fs/readFileSync "resources/config.edn" "utf-8")
-      edn/read-string))
+(def config (read-config))
 
 (def slack-passwords-file (:slack-passwords-file config))
 (def destination-gpg-file (expand-tilde (:destination-gpg-file config)))
