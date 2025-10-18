@@ -1,6 +1,6 @@
 #+title: Grab Slack auth token to use somewhere else
 
-This is an automation script for grabbing Slack tokens and session cookies to use with other tools. Mainly for using Slack in Emacs.
+This is an automation script for grabbing Slack tokens and session cookies to use with other tools.
 
 ** Prerequisites:
 
@@ -8,14 +8,38 @@ This is an automation script for grabbing Slack tokens and session cookies to us
 - Configured and functional GPG keychain
 
 ** How does it work?
-- Most likely you would be needing two types of tokens to interact with Slack through third-party apps:
-  - One that starts with ~xoxc-~
-  - Another that starts with ~xoxd-~
+It's easier when you have an explicit API access - requires you to have permissions, creating a "Slack App" in your workspace, setting OAuth, etc. Often that is a luxury we can't afford.
 
-This script will run for listed Slack Orgs and extract the tokens.
-In order to access Slack you will have to provide your credentials for each org, but we can't allow that through unsafe mechanisms, so the credentials *must* be stored in an encrypted file!
+Fortunately, we hackers don't need to settle with the status quo. We can extract the token from the running [already properly authenticated] Slack instance. The problem? The token you get that way is the *web client token* - it's meant for the Slack web interface, not the API, so if you try:
 
-The credentials file content would be like this:
+#+begin_src bash
+curl -X POST "https://slack.com/api/auth.test" \
+  -H "Content-type: application/json" \
+  -H "Authorization: Bearer ${token}" 
+#+end_src
+
+That won't work!
+
+However, If in addition to the token, we supply so called "D" cookie — /that's some Slack-specific bullshit, don't get hung up on the name/, we can make that work:
+
+#+begin_src org
+,#+header: :var token="xoxc-TOKEN"
+,#+header: :var cookie="xoxd-DCOOKIE"
+,#+begin_src bash
+curl -X POST "https://slack.com/api/search.messages" \
+-H "Authorization: Bearer ${token}" \
+-H "Cookie: d=${cookie};" \
+-d "query=test"
+,#+end_src
+#+end_src
+
+Basically, this script is to run for listed Slack Orgs and extract the tokens and the D-cookie.
+
+** So, what do you need to do?
+
+In order to access Slack you will have to provide your credentials for each org, but of course not in plain text - we're not savages, the credentials *must* be stored in an encrypted file!
+
+The credentials file (path to which would be listed in config.edn) would be like this:
 
 #+begin_src clojure
 {"myorg.slack.com"
